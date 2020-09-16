@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -46,7 +47,8 @@ func main() {
 	}
 
 	r := gin.Default()
-	r.POST("/", createDocumentEndpoint)
+	r.POST("/documents", createDocumentEndpoint)
+	r.GET("/search", searchDocumentEndpoint)
 	if err = r.Run(":8000"); err != nil {
 		log.Fatal(err)
 	}
@@ -81,4 +83,20 @@ func createDocumentEndpoint(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusOK)
+}
+
+func searchDocumentEndpoint(c *gin.Context) {
+	query := c.Query("query")
+	if query == "" {
+		errorResponse(c, http.StatusBadRequest, "Query not specified")
+		return
+	}
+	skip := 0
+	take := 10
+	if i, err := strconv.Atoi(c.Query("skip")); err == nil {
+		skip = i
+	}
+	if i, err := strconv.Atoi(c.Query("take")); err == nil {
+		take = i
+	}
 }
