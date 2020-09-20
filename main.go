@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -30,6 +32,20 @@ type DocumentRequest struct {
 	Content string `json:"content"`
 }
 
+// DocumentResponse result
+type DocumentResponse struct {
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+	Content   string    `json:"content"`
+}
+
+// SearchResponse result
+type SearchResponse struct {
+	Time      string             `json:"time"`
+	Hits      string             `json:"hits"`
+	Documents []DocumentResponse `json:"documents"`
+}
+
 var (
 	elasticSearchClient *elastic.Client
 )
@@ -37,7 +53,7 @@ var (
 func main() {
 	var err error
 	for {
-		elasticSearchClient, err := elastic.NewClient(elastic.SetURL("localhost:9200"), elastic.SetSniff(false))
+		_, err := elastic.NewClient(elastic.SetURL("localhost:9200"), elastic.SetSniff(false))
 		if err != nil {
 			log.Println(err)
 			time.Sleep(3 * time.Second)
@@ -99,4 +115,23 @@ func searchDocumentEndpoint(c *gin.Context) {
 	if i, err := strconv.Atoi(c.Query("take")); err == nil {
 		take = i
 	}
+	esQuery := elastic.NewMultiMatchQuery(query, "title", "content").Fuzziness("2").MinimumShouldMatch("2")
+	result, err := elasticSearchClient.Search().Index(elasticIndexName).Query(esQuery).From(skip).Size(take).Do(c.Request.Context())
+	if err != nil {
+		log.Println(err)
+		errorResponse(c, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+	res := SearchResponse{
+		Time: fmt.Sprintf("%d", result.TookInMillis),
+		Hits: fmt.Sprintf("%d", result.Hits.TotalHits),
+	}
+	docs := make([]DocumentResponse, 0)
+	for _, hit := range result.Hits.Hits {
+		var doc DocumentResponse
+		json.Unmarshal(*hit.Source, &doc)
+		docs = append(docs, doc)
+	}
+	res.Documents = docs
+	c.JSON(http.StatusOK, res)
 }
